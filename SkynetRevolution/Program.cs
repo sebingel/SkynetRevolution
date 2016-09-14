@@ -50,35 +50,28 @@ internal class Player
             // emergency cut. if the agent sits on a link with only one step to an an exit node we want to cut that link
             Link linkToCut = agent.Position.Links.Find(link => link.Nodes.Any(node => node.Exit));
 
-            // cut link to exit node with shortest path to agent
-            linkToCut = new BreadthFirstSearch().Search(agent.Position);
+            // cut links to exit nodes (for non-exit-node with max links)
+            if (linkToCut == null)
+            {
+                // Gets all Links leading to the nearest exit
+                IEnumerable<Link> exitLinks = new BreadthFirstSearch().Search(agent.Position);
 
-            //// cut links to exit nodes (for non-exit-node with max links)
-            //if (linkToCut == null)
-            //{
-            //    // Gets all Links leading to an exit
-            //    IEnumerable<Link> exitLinks =
-            //        map.Nodes.FindAll(
-            //            node => !node.Exit && node.Links.Any(link => link.Nodes.Any(innerNode => innerNode.Exit)))
-            //            .SelectMany(x => x.Links)
-            //            .Where(link => link.Nodes.Any(n => n.Exit));
+                // count the exit links for each node that has exit links
+                Dictionary<Node, int> dic = new Dictionary<Node, int>();
+                foreach (Node n in exitLinks.Select(link => link.Nodes.First(node => !node.Exit)))
+                {
+                    if (!dic.ContainsKey(n))
+                        dic.Add(n, 1);
+                    else
+                        dic[n]++;
+                }
 
-            //    // count the exit links for each node that has exit links
-            //    Dictionary<Node, int> dic = new Dictionary<Node, int>();
-            //    foreach (Node n in exitLinks.Select(link => link.Nodes.First(node => !node.Exit)))
-            //    {
-            //        if (!dic.ContainsKey(n))
-            //            dic.Add(n, 1);
-            //        else
-            //            dic[n]++;
-            //    }
+                // Get the node with the most exit links
+                Node target = dic.Aggregate((agg, next) => next.Value > agg.Value ? next : agg).Key;
 
-            //    // Get the node with the most exit links
-            //    Node target = dic.Aggregate((agg, next) => next.Value > agg.Value ? next : agg).Key;
-
-            //    // cut a link on the target node
-            //    linkToCut = target.Links.Find(x => x.Nodes.Any(y => y.Exit));
-            //}
+                // cut a link on the target node
+                linkToCut = target.Links.Find(x => x.Nodes.Any(y => y.Exit));
+            }
 
             SeverLink(linkToCut);
         }
@@ -153,25 +146,30 @@ public class SkynetAgent
 
 public class BreadthFirstSearch
 {
-    public Link Search(Node start)
+    public IEnumerable<Link> Search(Node start)
     {
+        bool stop=false;
+
         Queue<Tuple<Node, Node>> queue = new Queue<Tuple<Node, Node>>();
         HashSet<Node> visitedNodes = new HashSet<Node>();
 
         queue.Enqueue(Tuple.Create<Node, Node>(start, null));
 
-        while (true)
+        while (queue.Any())
         {
             Tuple<Node, Node> n = queue.Dequeue();
 
-            if (n.Item1.Exit)
-                return n.Item2.Links.Find(link => link.Nodes.Contains(n.Item1) && link.Nodes.Contains(n.Item2));
-
             visitedNodes.Add(n.Item1);
 
+            if (n.Item1.Exit)
+            {
+                stop = true;
+                yield return n.Item2.Links.Find(link => link.Nodes.Contains(n.Item1) && link.Nodes.Contains(n.Item2));
+            }
+            
             foreach (Node node in n.Item1.Links.SelectMany(link => link.Nodes))
             {
-                if (!visitedNodes.Contains(node))
+                if (!stop && !visitedNodes.Contains(node))
                     queue.Enqueue(Tuple.Create(node, n.Item1));
             }
         }
