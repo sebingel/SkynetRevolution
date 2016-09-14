@@ -47,23 +47,35 @@ internal class Player
 
             agent.Position = map[agentPosition];
 
-            Link linkToCut = null;
-
-            // If the agent sits on a node with only one link we want to cut that link
-            if (agent.Position.Links.Count == 1)
-                linkToCut = agent.Position.Links[0];
-
             // emergency cut. if the agent sits on a link with only one step to an an exit node we want to cut that link
-            if (linkToCut == null)
-                linkToCut = agent.Position.Links.Find(link => link.Nodes.Any(node => node.Exit));
+            Link linkToCut = agent.Position.Links.Find(link => link.Nodes.Any(node => node.Exit));
 
-            // cut links to exit nodes
+            // cut links to exit nodes (for non-exit-node with max links)
             if (linkToCut == null)
-                linkToCut = map.Nodes.Find(node => node.Exit && node.Links.Count > 0)?.Links.First();
+            {
+                // Gets all Links leading to an exit
+                IEnumerable<Link> exitLinks =
+                    map.Nodes.FindAll(
+                        node => !node.Exit && node.Links.Any(link => link.Nodes.Any(innerNode => innerNode.Exit)))
+                        .SelectMany(x => x.Links)
+                        .Where(link => link.Nodes.Any(n => n.Exit));
 
-            // or cut just any link
-            if (linkToCut == null)
-                linkToCut = map.Nodes.Find(nodes => nodes.Links.Count > 0)?.Links.First();
+                // count the exit links for each node that has exit links
+                Dictionary<Node, int> dic = new Dictionary<Node, int>();
+                foreach (Node n in exitLinks.Select(link => link.Nodes.First(node => !node.Exit)))
+                {
+                    if (!dic.ContainsKey(n))
+                        dic.Add(n, 1);
+                    else
+                        dic[n]++;
+                }
+
+                // Get the node with the most exit links
+                Node target = dic.Aggregate((agg, next) => next.Value > agg.Value ? next : agg).Key;
+
+                // cut a link on the target node
+                linkToCut = target.Links.Find(x => x.Nodes.Any(y => y.Exit));
+            }
 
             SeverLink(linkToCut);
         }
