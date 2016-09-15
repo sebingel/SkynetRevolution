@@ -50,28 +50,36 @@ internal class Player
             // emergency cut. if the agent sits on a link with only one step to an an exit node we want to cut that link
             Link linkToCut = agent.Position.Links.Find(link => link.Nodes.Any(node => node.Exit));
 
-            // cut links to exit nodes (for non-exit-node with max links)
+            // TODO: Den nächsten Exit suchen. Wenn steps bis zum nächsten Exit >= 2, dann den nächsten Node suchen, der auf mehrere Exits geht.
+
+            // cut links to exit nodes (for non-exit-node with more than one link to an exit node)
             if (linkToCut == null)
             {
-                // Gets all Links leading to the nearest exit
-                IEnumerable<Link> exitLinks = new BreadthFirstSearch().Search(agent.Position);
+                // Gets all Links leading to the nearest exit from a node with more than one exit links
+                List<Tuple<Link, int>> exitLinks = new BreadthFirstSearch().Search(agent.Position).ToList();
 
-                // count the exit links for each node that has exit links
-                Dictionary<Node, int> dic = new Dictionary<Node, int>();
-                foreach (Node n in exitLinks.Select(link => link.Nodes.First(node => !node.Exit)))
+                if (exitLinks.Any())
                 {
-                    if (!dic.ContainsKey(n))
-                        dic.Add(n, 1);
-                    else
-                        dic[n]++;
+                    // count the exit links for each node that has exit links
+                    Dictionary<Node, int> dic = new Dictionary<Node, int>();
+                    foreach (Node n in exitLinks.Select(link => link.Item1.Nodes.First(node => !node.Exit)))
+                    {
+                        if (!dic.ContainsKey(n))
+                            dic.Add(n, 1);
+                        else
+                            dic[n]++;
+                    }
+
+                    // Get the node with the most exit links
+                    Node target = dic.Aggregate((agg, next) => next.Value > agg.Value ? next : agg).Key;
+
+                    // cut a link on the target node
+                    linkToCut = target.Links.Find(x => x.Nodes.Any(y => y.Exit));
                 }
-
-                // Get the node with the most exit links
-                Node target = dic.Aggregate((agg, next) => next.Value > agg.Value ? next : agg).Key;
-
-                // cut a link on the target node
-                linkToCut = target.Links.Find(x => x.Nodes.Any(y => y.Exit));
             }
+
+            if (linkToCut == null)
+                linkToCut = new BreadthFirstSearch().Search(agent.Position).First().Item1;
 
             SeverLink(linkToCut);
         }
@@ -146,31 +154,35 @@ public class SkynetAgent
 
 public class BreadthFirstSearch
 {
-    public IEnumerable<Link> Search(Node start)
+    public IEnumerable<Tuple<Link, int>> Search(Node start)
     {
-        bool stop=false;
+        bool stop = false;
 
-        Queue<Tuple<Node, Node>> queue = new Queue<Tuple<Node, Node>>();
+        Queue<Tuple<Node, Node, int>> queue = new Queue<Tuple<Node, Node, int>>();
         HashSet<Node> visitedNodes = new HashSet<Node>();
 
-        queue.Enqueue(Tuple.Create<Node, Node>(start, null));
+        queue.Enqueue(Tuple.Create<Node, Node, int>(start, null, 0));
 
         while (queue.Any())
         {
-            Tuple<Node, Node> n = queue.Dequeue();
+            Tuple<Node, Node, int> n = queue.Dequeue();
 
             visitedNodes.Add(n.Item1);
 
             if (n.Item1.Exit)
             {
                 stop = true;
-                yield return n.Item2.Links.Find(link => link.Nodes.Contains(n.Item1) && link.Nodes.Contains(n.Item2));
+                yield return
+                    Tuple.Create(
+                        n.Item2.Links.Find(link => link.Nodes.Contains(n.Item1) && link.Nodes.Contains(n.Item2)),
+                        n.Item3);
             }
-            
+
             foreach (Node node in n.Item1.Links.SelectMany(link => link.Nodes))
             {
-                if (!stop && !visitedNodes.Contains(node))
-                    queue.Enqueue(Tuple.Create(node, n.Item1));
+                if (!stop &&
+                    !visitedNodes.Contains(node))
+                    queue.Enqueue(Tuple.Create(node, n.Item1, n.Item3 + 1));
             }
         }
     }
