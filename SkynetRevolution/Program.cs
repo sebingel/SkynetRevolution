@@ -5,15 +5,105 @@ using System.Linq;
 
 internal class Player
 {
+    private readonly IInputManager inputManager;
+
+    public Player(IInputManager inputManager)
+    {
+        this.inputManager = inputManager;
+    }
+
     private static void Main()
     {
+        IInput input = new ConsoleInput();
+        //IInput input =
+        //    new TestInput(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) +
+        //                  @"\..\..\..\Testcases\ep2_tc5.txt");
+        IInputManager inputManager = new InputManager(input);
+
+        new Player(inputManager).Start();
+    }
+
+    private void Start()
+    {
         // Initialize Map
-        Map map = new Map();
+        Map map = inputManager.CreateMapFromInitialInput();
 
         // Create SkynetAgent
         SkynetAgent agent = new SkynetAgent();
 
-        string[] inputs = Console.ReadLine().Split(' ');
+        // game loop
+        while (true)
+        {
+            inputManager.UpdateAgentFromRoundInput(agent, map);
+
+            // emergency cut. if the agent sits on a link with only one step to an an exit node we want to cut that link
+            Link linkToCut = agent.Position.Links.Find(link => link.Nodes.Any(node => node.Exit));
+
+            if (linkToCut == null)
+            {
+                // Tuple<Link, CountToReach>
+                List<Tuple<Link, int>> exitLinks = new BreadthFirstSearch().Search(agent.Position).ToList();
+                Tuple<Link, int> nearestExitLinkTuple = exitLinks.First();
+                if (nearestExitLinkTuple.Item2 < 0)
+                    linkToCut = nearestExitLinkTuple.Item1;
+                else
+                {
+                    // Tuple<Node, LinkCount, CountToReach>
+                    List<Tuple<Node, int, int>> myList = new List<Tuple<Node, int, int>>();
+                    foreach (Tuple<Link, int> exitLink in exitLinks)
+                    {
+                        Node n = exitLink.Item1.Nodes.First(x => !x.Exit);
+                        int index = myList.FindIndex(x => x.Item1 == n);
+                        if (index != -1)
+                        {
+                            myList[index] = Tuple.Create(myList[index].Item1, myList[index].Item2 + 1,
+                                myList[index].Item3);
+                        }
+                        else
+                            myList.Add(Tuple.Create(n, 1, exitLink.Item2));
+                    }
+
+                    Tuple<Node, int, int> target =
+                        myList.Aggregate(
+                            (current, next) => next.Item3 < current.Item3 && next.Item2 >= 2 ? next : current);
+
+                    linkToCut = target.Item1.Links.Find(l => l.Nodes.Any(n => n.Exit));
+                }
+            }
+
+            SeverLink(linkToCut);
+        }
+    }
+
+    private void SeverLink(Link l)
+    {
+        foreach (Node node in l.Nodes)
+            node.Links.Remove(l);
+
+        Console.WriteLine(l.ToString());
+    }
+}
+
+public interface IInputManager
+{
+    Map CreateMapFromInitialInput();
+    void UpdateAgentFromRoundInput(SkynetAgent agent, Map map);
+}
+
+public class InputManager : IInputManager
+{
+    private readonly IInput input;
+
+    public InputManager(IInput input)
+    {
+        this.input = input;
+    }
+
+    public Map CreateMapFromInitialInput()
+    {
+        Map map = new Map();
+
+        string[] inputs = input.GetInput().Split(' ');
         int nodeCount = int.Parse(inputs[0]); // the total number of nodes in the level, including the gateways
         int linkCount = int.Parse(inputs[1]); // the number of links
         int exitCounts = int.Parse(inputs[2]); // the number of exit gateways
@@ -23,7 +113,7 @@ internal class Player
 
         for (int i = 0; i < linkCount; i++)
         {
-            inputs = Console.ReadLine().Split(' ');
+            inputs = input.GetInput().Split(' ');
             int n1 = int.Parse(inputs[0]); // N1 and N2 defines a link between these nodes
             int n2 = int.Parse(inputs[1]);
 
@@ -34,87 +124,40 @@ internal class Player
 
         for (int i = 0; i < exitCounts; i++)
         {
-            int exitNode = int.Parse(Console.ReadLine()); // the index of a gateway node
+            int exitNode = int.Parse(input.GetInput()); // the index of a gateway node
 
             map.Nodes[exitNode].Exit = true;
         }
 
-        // game loop
-        while (true)
-        {
-            // The index of the node on which the Skynet agent is positioned this turn
-            int agentPosition = int.Parse(Console.ReadLine());
-
-            agent.Position = map[agentPosition];
-
-            // emergency cut. if the agent sits on a link with only one step to an an exit node we want to cut that link
-            Link linkToCut = agent.Position.Links.Find(link => link.Nodes.Any(node => node.Exit));
-
-            // Tuple<Link, CountToReach>
-            List<Tuple<Link, int>> exitLinks = new BreadthFirstSearch().Search(agent.Position).ToList();
-            Tuple<Link, int> nearestExitLinkTuple = exitLinks.First();
-            if (nearestExitLinkTuple.Item2 < 2)
-                linkToCut = nearestExitLinkTuple.Item1;
-            else
-            {
-                // Tuple<Node, LinkCount, CountToReach>
-                List<Tuple<Node, int, int>> myList = new List<Tuple<Node, int, int>>();
-                foreach (Tuple<Link, int> exitLink in exitLinks)
-                {
-                    Node n = exitLink.Item1.Nodes.First(x => !x.Exit);
-                    int index = myList.FindIndex(x => x.Item1 == n);
-                    if (index != -1)
-                        myList[index] = Tuple.Create(myList[index].Item1, myList[index].Item2 + 1, myList[index].Item3);
-                    else
-                        myList.Add(Tuple.Create(n, 1, exitLink.Item2));
-                }
-
-                Tuple<Node, int, int> target =
-                    myList.Aggregate((current, next) => next.Item3 < current.Item3 && next.Item2 > 2 ? next : current);
-
-                linkToCut = target.Item1.Links.Find(l => l.Nodes.Any(n => n.Exit));
-            }
-
-            //// cut links to exit nodes (for non-exit-node with more than one link to an exit node)
-            //if (linkToCut == null)
-            //{
-            //    // Gets all Links leading to the nearest exit from a node with more than one exit links
-            //    List<Tuple<Link, int>> exitLinks = new BreadthFirstSearch().Search(agent.Position).ToList();
-
-            //    if (exitLinks.Any())
-            //    {
-            //        // count the exit links for each node that has exit links
-            //        Dictionary<Node, int> dic = new Dictionary<Node, int>();
-            //        foreach (Node n in exitLinks.Select(link => link.Item1.Nodes.First(node => !node.Exit)))
-            //        {
-            //            if (!dic.ContainsKey(n))
-            //                dic.Add(n, 1);
-            //            else
-            //                dic[n]++;
-            //        }
-
-            //        // Get the node with the most exit links
-            //        Node target = dic.Aggregate((agg, next) => next.Value > agg.Value ? next : agg).Key;
-
-            //        // cut a link on the target node
-            //        linkToCut = target.Links.Find(x => x.Nodes.Any(y => y.Exit));
-            //    }
-            //}
-
-            //if (linkToCut == null)
-            //    linkToCut = new BreadthFirstSearch().Search(agent.Position).First().Item1;
-
-            SeverLink(linkToCut);
-        }
+        return map;
     }
 
-    private static void SeverLink(Link l)
+    public void UpdateAgentFromRoundInput(SkynetAgent agent, Map map)
     {
-        foreach (Node node in l.Nodes)
-            node.Links.Remove(l);
+        // The index of the node on which the Skynet agent is positioned this turn
+        int agentPosition = int.Parse(input.GetInput());
 
-        Console.WriteLine(l.ToString());
+        agent.Position = map[agentPosition];
     }
+}
+
+public interface IInput
+{
+    string GetInput();
+}
+
+public class ConsoleInput : IInput
+{
+    #region Implementation of IInput
+
+    public string GetInput()
+    {
+        string line = Console.ReadLine();
+        Console.Error.WriteLine(line);
+        return line;
+    }
+
+    #endregion
 }
 
 public class Node
@@ -179,8 +222,6 @@ public class BreadthFirstSearch
 {
     public IEnumerable<Tuple<Link, int>> Search(Node start)
     {
-        bool stop = false;
-
         Queue<Tuple<Node, Node, int>> queue = new Queue<Tuple<Node, Node, int>>();
         HashSet<Node> visitedNodes = new HashSet<Node>();
 
@@ -194,17 +235,19 @@ public class BreadthFirstSearch
 
             if (n.Item1.Exit)
             {
-                stop = true;
-                yield return
-                    Tuple.Create(
-                        n.Item2.Links.Find(link => link.Nodes.Contains(n.Item1) && link.Nodes.Contains(n.Item2)),
-                        n.Item3);
+                foreach (Link l in n.Item1.Links)
+                    yield return Tuple.Create(l, n.Item3);
+
+                //yield return
+                //    Tuple.Create(
+                //        n.Item2.Links.Find(link => link.Nodes.Contains(n.Item1) && link.Nodes.Contains(n.Item2)),
+                //        n.Item3);
             }
 
             foreach (Node node in n.Item1.Links.SelectMany(link => link.Nodes))
             {
-                if (!stop &&
-                    !visitedNodes.Contains(node))
+                if (!visitedNodes.Contains(node) &&
+                    queue.All(tup => tup.Item1 != node))
                     queue.Enqueue(Tuple.Create(node, n.Item1, n.Item3 + 1));
             }
         }
