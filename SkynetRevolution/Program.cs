@@ -14,10 +14,10 @@ internal class Player
 
     private static void Main()
     {
-        IInput input = new ConsoleInput();
-        //IInput input =
-        //    new TestInput(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) +
-        //                  @"\..\..\..\Testcases\ep2_tc5.txt");
+        //IInput input = new ConsoleInput();
+        IInput input =
+            new TestInput(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) +
+                          @"\..\..\..\Testcases\ep2_tc5.txt");
         IInputManager inputManager = new InputManager(input);
 
         new Player(inputManager).Start();
@@ -78,7 +78,11 @@ internal class Player
     private void SeverLink(Link l)
     {
         foreach (Node node in l.Nodes)
+        {
+            node.Neighbors.Remove(l.Nodes.First(n => n.Id != node.Id));
+
             node.Links.Remove(l);
+        }
 
         Console.WriteLine(l.ToString());
     }
@@ -120,6 +124,8 @@ public class InputManager : IInputManager
             Link link = new Link(map[n1], map[n2]);
             map[n1].Links.Add(link);
             map[n2].Links.Add(link);
+            map[n1].Neighbors.Add(map[n2]);
+            map[n2].Neighbors.Add(map[n1]);
         }
 
         for (int i = 0; i < exitCounts; i++)
@@ -166,12 +172,15 @@ public class Node
 
     public List<Link> Links { get; }
 
+    public List<Node> Neighbors { get; }
+
     public bool Exit { get; set; }
 
     public Node(int id)
     {
         Id = id;
         Links = new List<Link>();
+        Neighbors = new List<Node>();
     }
 
     public override string ToString()
