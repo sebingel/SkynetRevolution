@@ -50,36 +50,59 @@ internal class Player
             // emergency cut. if the agent sits on a link with only one step to an an exit node we want to cut that link
             Link linkToCut = agent.Position.Links.Find(link => link.Nodes.Any(node => node.Exit));
 
-            // TODO: Den nächsten Exit suchen. Wenn steps bis zum nächsten Exit >= 2, dann den nächsten Node suchen, der auf mehrere Exits geht.
-
-            // cut links to exit nodes (for non-exit-node with more than one link to an exit node)
-            if (linkToCut == null)
+            // Tuple<Link, CountToReach>
+            List<Tuple<Link, int>> exitLinks = new BreadthFirstSearch().Search(agent.Position).ToList();
+            Tuple<Link, int> nearestExitLinkTuple = exitLinks.First();
+            if (nearestExitLinkTuple.Item2 < 2)
+                linkToCut = nearestExitLinkTuple.Item1;
+            else
             {
-                // Gets all Links leading to the nearest exit from a node with more than one exit links
-                List<Tuple<Link, int>> exitLinks = new BreadthFirstSearch().Search(agent.Position).ToList();
-
-                if (exitLinks.Any())
+                // Tuple<Node, LinkCount, CountToReach>
+                List<Tuple<Node, int, int>> myList = new List<Tuple<Node, int, int>>();
+                foreach (Tuple<Link, int> exitLink in exitLinks)
                 {
-                    // count the exit links for each node that has exit links
-                    Dictionary<Node, int> dic = new Dictionary<Node, int>();
-                    foreach (Node n in exitLinks.Select(link => link.Item1.Nodes.First(node => !node.Exit)))
-                    {
-                        if (!dic.ContainsKey(n))
-                            dic.Add(n, 1);
-                        else
-                            dic[n]++;
-                    }
-
-                    // Get the node with the most exit links
-                    Node target = dic.Aggregate((agg, next) => next.Value > agg.Value ? next : agg).Key;
-
-                    // cut a link on the target node
-                    linkToCut = target.Links.Find(x => x.Nodes.Any(y => y.Exit));
+                    Node n = exitLink.Item1.Nodes.First(x => !x.Exit);
+                    int index = myList.FindIndex(x => x.Item1 == n);
+                    if (index != -1)
+                        myList[index] = Tuple.Create(myList[index].Item1, myList[index].Item2 + 1, myList[index].Item3);
+                    else
+                        myList.Add(Tuple.Create(n, 1, exitLink.Item2));
                 }
+
+                Tuple<Node, int, int> target =
+                    myList.Aggregate((current, next) => next.Item3 < current.Item3 && next.Item2 > 2 ? next : current);
+
+                linkToCut = target.Item1.Links.Find(l => l.Nodes.Any(n => n.Exit));
             }
 
-            if (linkToCut == null)
-                linkToCut = new BreadthFirstSearch().Search(agent.Position).First().Item1;
+            //// cut links to exit nodes (for non-exit-node with more than one link to an exit node)
+            //if (linkToCut == null)
+            //{
+            //    // Gets all Links leading to the nearest exit from a node with more than one exit links
+            //    List<Tuple<Link, int>> exitLinks = new BreadthFirstSearch().Search(agent.Position).ToList();
+
+            //    if (exitLinks.Any())
+            //    {
+            //        // count the exit links for each node that has exit links
+            //        Dictionary<Node, int> dic = new Dictionary<Node, int>();
+            //        foreach (Node n in exitLinks.Select(link => link.Item1.Nodes.First(node => !node.Exit)))
+            //        {
+            //            if (!dic.ContainsKey(n))
+            //                dic.Add(n, 1);
+            //            else
+            //                dic[n]++;
+            //        }
+
+            //        // Get the node with the most exit links
+            //        Node target = dic.Aggregate((agg, next) => next.Value > agg.Value ? next : agg).Key;
+
+            //        // cut a link on the target node
+            //        linkToCut = target.Links.Find(x => x.Nodes.Any(y => y.Exit));
+            //    }
+            //}
+
+            //if (linkToCut == null)
+            //    linkToCut = new BreadthFirstSearch().Search(agent.Position).First().Item1;
 
             SeverLink(linkToCut);
         }
