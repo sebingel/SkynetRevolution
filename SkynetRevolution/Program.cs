@@ -73,35 +73,6 @@ internal class Player
 
                     linkToCut = nearestMultiExitNeighbor.Node.Links.Find(l => l.Nodes.Any(n => n.Exit));
                 }
-
-                //// Tuple<Link, CountToReach>
-                //List<Tuple<Link, int>> exitLinks = new BreadthFirstSearch().Search(agent.Position).ToList();
-                //Tuple<Link, int> nearestExitLinkTuple = exitLinks.First();
-                //if (nearestExitLinkTuple.Item2 < 0)
-                //    linkToCut = nearestExitLinkTuple.Item1;
-                //else
-                //{
-                //    // Tuple<Node, LinkCount, CountToReach>
-                //    List<Tuple<Node, int, int>> myList = new List<Tuple<Node, int, int>>();
-                //    foreach (Tuple<Link, int> exitLink in exitLinks)
-                //    {
-                //        Node n = exitLink.Item1.Nodes.First(x => !x.Exit);
-                //        int index = myList.FindIndex(x => x.Item1 == n);
-                //        if (index != -1)
-                //        {
-                //            myList[index] = Tuple.Create(myList[index].Item1, myList[index].Item2 + 1,
-                //                myList[index].Item3);
-                //        }
-                //        else
-                //            myList.Add(Tuple.Create(n, 1, exitLink.Item2));
-                //    }
-
-                //    Tuple<Node, int, int> target =
-                //        myList.Aggregate(
-                //            (current, next) => next.Item3 < current.Item3 && next.Item2 >= 2 ? next : current);
-
-                //    linkToCut = target.Item1.Links.Find(l => l.Nodes.Any(n => n.Exit));
-                //}
             }
 
             SeverLink(linkToCut);
