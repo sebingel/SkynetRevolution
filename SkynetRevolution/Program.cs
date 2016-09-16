@@ -14,10 +14,10 @@ internal class Player
 
     private static void Main()
     {
-        //IInput input = new ConsoleInput();
-        IInput input =
-            new TestInput(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) +
-                          @"\..\..\..\Testcases\ep2_tc5.txt");
+        IInput input = new ConsoleInput();
+        //IInput input =
+        //    new TestInput(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) +
+        //                  @"\..\..\..\Testcases\ep2_tc4.txt");
         IInputManager inputManager = new InputManager(input);
 
         new Player(inputManager).Start();
@@ -41,34 +41,67 @@ internal class Player
 
             if (linkToCut == null)
             {
-                // Tuple<Link, CountToReach>
-                List<Tuple<Link, int>> exitLinks = new BreadthFirstSearch().Search(agent.Position).ToList();
-                Tuple<Link, int> nearestExitLinkTuple = exitLinks.First();
-                if (nearestExitLinkTuple.Item2 < 0)
-                    linkToCut = nearestExitLinkTuple.Item1;
-                else
+                // calculate distances from agent
+                BreadthFirstSearch bfs = new BreadthFirstSearch();
+                bfs.CalculateDistances(agent.Position);
+
+                // get all nodes with an exitnode as neighbor
+                List<NodeDistance> exitNeighbors =
+                    bfs.NodeDistances.Where(nd => nd.Node.Neighbors.Any(n => n.Exit)).ToList();
+                // list is ordered so the first has min distance
+                NodeDistance nearestExitNeighbor = exitNeighbors[0];
+
+                // find out if there are more than one node with an exit neighbor on the minimum level
+                List<NodeDistance> exitNeighborsWithMinDist =
+                    exitNeighbors.FindAll(distance => distance.Distance == nearestExitNeighbor.Distance);
+                // if there are more than one node with an exit neighbor on the minimum level we choose the one with the most exit neigbors
+                if (exitNeighborsWithMinDist.Count > 1)
                 {
-                    // Tuple<Node, LinkCount, CountToReach>
-                    List<Tuple<Node, int, int>> myList = new List<Tuple<Node, int, int>>();
-                    foreach (Tuple<Link, int> exitLink in exitLinks)
-                    {
-                        Node n = exitLink.Item1.Nodes.First(x => !x.Exit);
-                        int index = myList.FindIndex(x => x.Item1 == n);
-                        if (index != -1)
-                        {
-                            myList[index] = Tuple.Create(myList[index].Item1, myList[index].Item2 + 1,
-                                myList[index].Item3);
-                        }
-                        else
-                            myList.Add(Tuple.Create(n, 1, exitLink.Item2));
-                    }
-
-                    Tuple<Node, int, int> target =
-                        myList.Aggregate(
-                            (current, next) => next.Item3 < current.Item3 && next.Item2 >= 2 ? next : current);
-
-                    linkToCut = target.Item1.Links.Find(l => l.Nodes.Any(n => n.Exit));
+                    nearestExitNeighbor =
+                        exitNeighborsWithMinDist.OrderByDescending(
+                            distance => distance.Node.Neighbors.Count(node => node.Exit)).First();
                 }
+
+                linkToCut = nearestExitNeighbor.Node.Links.Find(l => l.Nodes.Any(n => n.Exit));
+
+                if (nearestExitNeighbor.Distance > 2)
+                {
+                    int maxExitNeighbors = bfs.NodeDistances.Max(nd => nd.Node.Neighbors.Count(n => n.Exit));
+                    IEnumerable<NodeDistance> maxExitNeighborNodes =
+                        bfs.NodeDistances.Where(nd => nd.Node.Neighbors.Count(n => n.Exit) == maxExitNeighbors);
+                    NodeDistance nearestMultiExitNeighbor = maxExitNeighborNodes.OrderBy(n => n.Distance).First();
+
+                    linkToCut = nearestMultiExitNeighbor.Node.Links.Find(l => l.Nodes.Any(n => n.Exit));
+                }
+
+                //// Tuple<Link, CountToReach>
+                //List<Tuple<Link, int>> exitLinks = new BreadthFirstSearch().Search(agent.Position).ToList();
+                //Tuple<Link, int> nearestExitLinkTuple = exitLinks.First();
+                //if (nearestExitLinkTuple.Item2 < 0)
+                //    linkToCut = nearestExitLinkTuple.Item1;
+                //else
+                //{
+                //    // Tuple<Node, LinkCount, CountToReach>
+                //    List<Tuple<Node, int, int>> myList = new List<Tuple<Node, int, int>>();
+                //    foreach (Tuple<Link, int> exitLink in exitLinks)
+                //    {
+                //        Node n = exitLink.Item1.Nodes.First(x => !x.Exit);
+                //        int index = myList.FindIndex(x => x.Item1 == n);
+                //        if (index != -1)
+                //        {
+                //            myList[index] = Tuple.Create(myList[index].Item1, myList[index].Item2 + 1,
+                //                myList[index].Item3);
+                //        }
+                //        else
+                //            myList.Add(Tuple.Create(n, 1, exitLink.Item2));
+                //    }
+
+                //    Tuple<Node, int, int> target =
+                //        myList.Aggregate(
+                //            (current, next) => next.Item3 < current.Item3 && next.Item2 >= 2 ? next : current);
+
+                //    linkToCut = target.Item1.Links.Find(l => l.Nodes.Any(n => n.Exit));
+                //}
             }
 
             SeverLink(linkToCut);
@@ -227,8 +260,56 @@ public class SkynetAgent
     public Node Position { get; set; }
 }
 
+public class NodeDistance
+{
+    public Node Node { get; set; }
+    public int Distance { get; set; }
+}
+
 public class BreadthFirstSearch
 {
+    private List<NodeDistance> nodeDistances;
+
+    private class BfsNodeDistance : NodeDistance
+    {
+        public Node PredecessorNode { get; set; }
+    }
+
+    public IEnumerable<NodeDistance> NodeDistances => nodeDistances.OrderBy(nd => nd.Distance);
+
+    public void CalculateDistances(Node start)
+    {
+        nodeDistances = new List<NodeDistance>();
+
+        Queue<BfsNodeDistance> queue = new Queue<BfsNodeDistance>();
+        HashSet<Node> visitedNodes = new HashSet<Node>();
+
+        queue.Enqueue(new BfsNodeDistance { Node = start, PredecessorNode = null, Distance = 0 });
+
+        while (queue.Any())
+        {
+            BfsNodeDistance bfsNode = queue.Dequeue();
+            visitedNodes.Add(bfsNode.Node);
+
+            foreach (Node neighbor in bfsNode.Node.Neighbors)
+            {
+                if (!visitedNodes.Contains(neighbor) &&
+                    queue.All(nq => nq.Node != neighbor) &&
+                    !neighbor.Exit)
+                {
+                    queue.Enqueue(new BfsNodeDistance
+                    {
+                        Node = neighbor,
+                        PredecessorNode = bfsNode.Node,
+                        Distance = bfsNode.Distance + 1
+                    });
+                }
+            }
+
+            nodeDistances.Add(new NodeDistance { Node = bfsNode.Node, Distance = bfsNode.Distance });
+        }
+    }
+
     public IEnumerable<Tuple<Link, int>> Search(Node start)
     {
         Queue<Tuple<Node, Node, int>> queue = new Queue<Tuple<Node, Node, int>>();
