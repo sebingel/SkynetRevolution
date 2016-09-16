@@ -36,43 +36,37 @@ internal class Player
         {
             inputManager.UpdateAgentFromRoundInput(agent, map);
 
-            // emergency cut. if the agent sits on a link with only one step to an an exit node we want to cut that link
-            Link linkToCut = agent.Position.Links.Find(link => link.Nodes.Any(node => node.Exit));
+            // calculate distances from agent
+            BreadthFirstSearch bfs = new BreadthFirstSearch();
+            bfs.CalculateDistances(agent.Position);
 
-            if (linkToCut == null)
+            // get all nodes with an exitnode as neighbor
+            List<NodeDistance> exitNeighbors =
+                bfs.NodeDistances.Where(nd => nd.Node.Neighbors.Any(n => n.Exit)).ToList();
+            // list is ordered so the first has min distance
+            NodeDistance nearestExitNeighbor = exitNeighbors[0];
+
+            // find out if there are more than one node with an exit neighbor on the minimum level
+            List<NodeDistance> exitNeighborsWithMinDist =
+                exitNeighbors.FindAll(distance => distance.Distance == nearestExitNeighbor.Distance);
+            // if there are more than one node with an exit neighbor on the minimum level we choose the one with the most exit neigbors
+            if (exitNeighborsWithMinDist.Count > 1)
             {
-                // calculate distances from agent
-                BreadthFirstSearch bfs = new BreadthFirstSearch();
-                bfs.CalculateDistances(agent.Position);
+                nearestExitNeighbor =
+                    exitNeighborsWithMinDist.OrderByDescending(
+                        distance => distance.Node.Neighbors.Count(node => node.Exit)).First();
+            }
 
-                // get all nodes with an exitnode as neighbor
-                List<NodeDistance> exitNeighbors =
-                    bfs.NodeDistances.Where(nd => nd.Node.Neighbors.Any(n => n.Exit)).ToList();
-                // list is ordered so the first has min distance
-                NodeDistance nearestExitNeighbor = exitNeighbors[0];
+            Link linkToCut = nearestExitNeighbor.Node.Links.Find(l => l.Nodes.Any(n => n.Exit));
 
-                // find out if there are more than one node with an exit neighbor on the minimum level
-                List<NodeDistance> exitNeighborsWithMinDist =
-                    exitNeighbors.FindAll(distance => distance.Distance == nearestExitNeighbor.Distance);
-                // if there are more than one node with an exit neighbor on the minimum level we choose the one with the most exit neigbors
-                if (exitNeighborsWithMinDist.Count > 1)
-                {
-                    nearestExitNeighbor =
-                        exitNeighborsWithMinDist.OrderByDescending(
-                            distance => distance.Node.Neighbors.Count(node => node.Exit)).First();
-                }
+            if (nearestExitNeighbor.Distance > 1)
+            {
+                int maxExitNeighbors = bfs.NodeDistances.Max(nd => nd.Node.Neighbors.Count(n => n.Exit));
+                IEnumerable<NodeDistance> maxExitNeighborNodes =
+                    bfs.NodeDistances.Where(nd => nd.Node.Neighbors.Count(n => n.Exit) == maxExitNeighbors);
+                NodeDistance nearestMultiExitNeighbor = maxExitNeighborNodes.OrderBy(n => n.Distance).First();
 
-                linkToCut = nearestExitNeighbor.Node.Links.Find(l => l.Nodes.Any(n => n.Exit));
-
-                if (nearestExitNeighbor.Distance > 2)
-                {
-                    int maxExitNeighbors = bfs.NodeDistances.Max(nd => nd.Node.Neighbors.Count(n => n.Exit));
-                    IEnumerable<NodeDistance> maxExitNeighborNodes =
-                        bfs.NodeDistances.Where(nd => nd.Node.Neighbors.Count(n => n.Exit) == maxExitNeighbors);
-                    NodeDistance nearestMultiExitNeighbor = maxExitNeighborNodes.OrderBy(n => n.Distance).First();
-
-                    linkToCut = nearestMultiExitNeighbor.Node.Links.Find(l => l.Nodes.Any(n => n.Exit));
-                }
+                linkToCut = nearestMultiExitNeighbor.Node.Links.Find(l => l.Nodes.Any(n => n.Exit));
             }
 
             SeverLink(linkToCut);
