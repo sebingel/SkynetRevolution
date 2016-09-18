@@ -14,10 +14,10 @@ internal class Player
 
     private static void Main()
     {
-        //IInput input = new ConsoleInput();
-        IInput input =
-            new TestInput(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) +
-                          @"\..\..\..\Testcases\ep2_tc3.txt");
+        IInput input = new ConsoleInput();
+        //IInput input =
+        //    new TestInput(System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) +
+        //                  @"\..\..\..\Testcases\ep2_tc6.txt");
         IInputManager inputManager = new InputManager(input);
 
         new Player(inputManager).Start();
@@ -70,24 +70,25 @@ internal class Player
                     continue;
                 }
 
-                // we get the one with the most exit-neighbors in its path to it
+                // we get the nodes with the most exit-neighbors in its path to it
                 IEnumerable<NodeDistance> maxExitNeighborNodes =
                     multiExitNodes.Where(nd => nd.Node.Neighbors.Count(n => n.Exit) == maxExitNeighbors);
 
-                Dictionary<NodeDistance, int> exitNeighborCountDic =
-                    maxExitNeighborNodes.ToDictionary(maxExitNeighborNode => maxExitNeighborNode,
-                        maxExitNeighborNode =>
-                            maxExitNeighborNode.NodesOnPath.Count(
-                                nodes => nodes.Links.Any(l => l.Nodes.Any(n => n.Exit))));
+                // we get the one with the most urgent ratio of exit-neighbors to normal nodes on its path
+                Dictionary<NodeDistance, Tuple<int, int>> exitNeighborCountDic =
+                    new Dictionary<NodeDistance, Tuple<int, int>>();
+                foreach (NodeDistance node in maxExitNeighborNodes)
+                {
+                    exitNeighborCountDic.Add(node,
+                        Tuple.Create(node.NodesOnPath.Count(nodes => nodes.Links.Any(l => l.Nodes.Any(n => n.Exit))),
+                            node.NodesOnPath.Count(nodes => nodes.Links.All(l => l.Nodes.All(n => !n.Exit)))));
+                }
 
-                int maxExitNeighborsOnPathCount = exitNeighborCountDic.Max(x => x.Value);
+                NodeDistance ndWithUrgentRatio =
+                    exitNeighborCountDic.OrderByDescending(x => x.Value.Item1 - x.Value.Item2).First().Key;
+                Link link = ndWithUrgentRatio.Node.Links.Find(l => l.Nodes.Any(n => n.Exit));
+                SeverLink(link);
 
-                KeyValuePair<NodeDistance, int> maxExitNeighborsonPath =
-                    exitNeighborCountDic.Where(x => x.Value == maxExitNeighborsOnPathCount)
-                        .OrderBy(x => x.Key.Distance)
-                        .First();
-
-                SeverLink(maxExitNeighborsonPath.Key.Node.Links.Find(l => l.Nodes.Any(n => n.Exit)));
                 continue;
             }
             else
